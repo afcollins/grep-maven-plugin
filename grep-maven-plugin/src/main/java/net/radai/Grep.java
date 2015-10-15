@@ -1,12 +1,16 @@
 package net.radai;
 
+import java.io.File;
+
 public class Grep {
     private String file;
     private String filePattern;
     private String grepPattern;
+    private File grepFile;
     private String outputPattern;
     private boolean failIfFound;
     private boolean failIfNotFound;
+    private String property;
 
     public String getFile() {
         return file;
@@ -58,10 +62,24 @@ public class Grep {
 
     @Override
     public String toString() {
-        String failDesc = failIfFound ? ", fail if found" : "";
-        if (failIfNotFound) {
-            failDesc += ", fail if not found";
-        }
-        return ("grep for \""+ grepPattern +"\" in "+ (filePattern!=null ? filePattern : file)) + failDesc;
+        return "Grep [file=" + file + ", filePattern=" + filePattern + ", grepPattern=" + grepPattern + ", grepFile="
+                + grepFile + ", outputPattern=" + outputPattern + ", failIfFound=" + failIfFound + ", failIfNotFound="
+                + failIfNotFound + "]";
+    }
+
+    public File getGrepFile() {
+        return grepFile;
+    }
+
+    public void setGrepFile(File grepFile) {
+        this.grepFile = grepFile;
+    }
+
+    public String getProperty() {
+        return property;
+    }
+
+    public void setProperty(String property) {
+        this.property = property;
     }
 }
