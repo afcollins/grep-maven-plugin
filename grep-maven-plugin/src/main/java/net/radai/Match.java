@@ -1,21 +1,23 @@
 package net.radai;
 
-import java.io.File;
+import java.nio.file.Path;
 
 public class Match {
-    private File file;
+    private Path file;
     private int lineNumber;
     private String line;
+    private String fileName;
 
-    public Match(File theFile, String theLine, int lineNumber) {
+    public Match(Path theFile, String theLine, int lineNumber) {
         super();
         this.file = theFile;
         this.line = theLine;
         this.lineNumber = lineNumber;
+        fileName = file.toUri().toString();
     }
 
-    public File getTheFile() {
-        return file;
+    public String getFileName() {
+        return fileName;
     }
 
     public String getTheLine() {
@@ -28,7 +30,7 @@ public class Match {
 
     @Override
     public String toString() {
-        return "[" + file + ":" + lineNumber + ":" + line + "]";
+        return "[" + fileName + ":" + lineNumber + ":" + line + "]";
     }
 
 }

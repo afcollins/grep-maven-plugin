@@ -5,6 +5,8 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -16,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoFailureException;
@@ -60,16 +63,26 @@ public abstract class AbstractGrepMojo extends AbstractMojo {
             for (String patternLine : patternLines) {
                 grepFile(grep, patternLine);
             }
+
+            if (matches.isEmpty()) {
+                failIfNotFound(grep.getFile(), grep);
+            }
         }
     }
 
     private void grepFile(Grep grep, String grepPattern) {
         Pattern lookingFor = Pattern.compile(grepPattern);
-        File searchFile = null;
-        if (grep.getFile() == null) {
-            searchFile = Paths.get(basedir.getAbsolutePath(), "src").toFile();
+        Path searchFile = null;
+        String file = grep.getFile();
+        if (file == null) {
+            searchFile = Paths.get(basedir.getAbsolutePath(), "src");
         } else {
-            searchFile = Paths.get(basedir.getAbsolutePath(), grep.getFile()).toFile();
+            if (file.contains("!")) {
+                String[] split = grep.getFile().split("!");
+                searchFile = Paths.get(basedir.getAbsolutePath(), split[0]);
+            } else {
+                searchFile = Paths.get(basedir.getAbsolutePath(), file);
+            }
         }
         grepIn(searchFile, lookingFor, grep);
         if (grep.getFilePattern() != null) {
@@ -77,25 +90,38 @@ public abstract class AbstractGrepMojo extends AbstractMojo {
         }
     }
 
-    private void grepIn(File theFile, Pattern lookingFor, Grep grep) {
-        if (!theFile.exists()) {
+    private void grepIn(Path theFile, Pattern lookingFor, Grep grep) {
+        if (!Files.exists(theFile)) {
             return;
         }
-        if (!theFile.canRead()) {
+        if (!Files.isReadable(theFile)) {
             return;
         }
-        if (theFile.isDirectory()) {
-            File[] listFiles = theFile.listFiles(new FilenameFilter() {
-                @Override
-                public boolean accept(File dir, String name) {
-                    return !name.endsWith(".zip") && !name.endsWith(".properties");
-                }
-            });
-            for (File file : listFiles) {
-                grepIn(file, lookingFor, grep);
+        if (Files.isDirectory(theFile)) {
+            try {
+                Files.walk(theFile).forEach(c -> {
+                    if (!c.toString().endsWith(".zip") && c.toString().endsWith(".properties")) {
+                        grepIn(c, lookingFor, grep);
+                    }
+                    return;
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+                throw new RuntimeException(e);
             }
-            return;
         }
+//        if (theFile.toString().endsWith(".zip")) {
+//            try {
+//                FileSystem newFileSystem = FileSystems.newFileSystem(theFile, ClassLoader.getSystemClassLoader());
+//                Iterable<Path> rootDirectories = newFileSystem.getRootDirectories();
+//                for (Path path : rootDirectories) {
+//                    grepIn(path, lookingFor, grep);
+//                }
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//                throw new RuntimeException(e);
+//            }
+//        }
         List<Match> grepThroughFile = grepThroughFile(theFile, lookingFor, grep);
         addMatches(grep, grepThroughFile);
     }
@@ -110,66 +136,54 @@ public abstract class AbstractGrepMojo extends AbstractMojo {
         matches.get(grep).addAll(grepThroughFile);
     }
 
-    private List<Match> grepThroughFile(File theFile, Pattern lookingFor, Grep grep) {
-        Matcher m;
-        FileReader reader = null;
-        List<Match> fileMatches = Collections.emptyList();
+    private List<Match> grepThroughFile(Path theFile, Pattern lookingFor, Grep grep) {
+        int lineNumber = 0;
+        Stream<String> lines;
         try {
-            reader = new FileReader(theFile);
-            BufferedReader bufferedReader = new BufferedReader(reader);
-            String line;
-            int lineNumber = 0;
-            boolean found = false;
-            while ((line = bufferedReader.readLine()) != null) {
-                lineNumber++;
-                m = lookingFor.matcher(line);
-                if (!(m.find())) {
-                    continue;
-                }
-                Match processMatchingLine = processMatchingLine(theFile, line, grep, lineNumber);
-                if (fileMatches.isEmpty()) {
-                    fileMatches = new ArrayList<>();
-                }
-                fileMatches.add(processMatchingLine);
-                found = true;
-            }
-            if (!found) {
-                failIfNotFound(theFile, grep);
-            }
-            return fileMatches;
-        } catch (Exception e) {
+            lines = Files.lines(theFile);
+        } catch (IOException e) {
             e.printStackTrace();
             throw new RuntimeException(e);
-        } finally {
-            if (reader != null)
-                try {
-                    reader.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
         }
+        List<Match> fileMatchesToReturn = lines.collect(ArrayList::new, (fileMatches, line) -> {
+            checkIfPatternFound(theFile, lookingFor, grep, fileMatches, lineNumber, line);
+        } , (l, r) -> l.addAll(r));
+        return fileMatchesToReturn;
     }
 
-    private Match processMatchingLine(File theFile, String theLine, Grep grep, int lineNumber) throws Exception {
+    private List<Match> checkIfPatternFound(Path theFile, Pattern lookingFor, Grep grep, List<Match> fileMatches,
+            int lineNumber, String line) {
+        Matcher m;
+        lineNumber++;
+        m = lookingFor.matcher(line);
+        if (m.find()) {
+            Match processMatchingLine = processMatchingLine(theFile, line, grep, lineNumber);
+            if (fileMatches.isEmpty()) {
+                fileMatches = new ArrayList<>();
+            }
+            fileMatches.add(processMatchingLine);
+        }
+        return fileMatches;
+    }
+
+    private Match processMatchingLine(Path theFile, String theLine, Grep grep, int lineNumber) {
         failIfFound(theFile, theLine, grep, lineNumber);
         return new Match(theFile, theLine, lineNumber);
     }
 
-    private void failIfFound(File theFile, String theLine, Grep grep, int lineNumber)
-            throws IOException, MojoFailureException {
+    private void failIfFound(Path theFile, String theLine, Grep grep, int lineNumber) {
         if (grep.isFailIfFound()) {
-            String msg = grep.getGrepPattern() + " found in  " + theFile.getCanonicalPath() + ":" + lineNumber + " ("
-                    + theLine + ")";
+            String msg = grep.getGrepPattern() + " found in  " + theFile + ":" + lineNumber + " (" + theLine + ")";
             log.error(msg);
-            throw new MojoFailureException(msg);
+            throw new RuntimeException(msg);
         }
     }
 
-    private void failIfNotFound(File theFile, Grep grep) throws IOException, MojoFailureException {
+    private void failIfNotFound(String string, Grep grep) {
         if (grep.isFailIfNotFound()) {
-            String msg = grep.getGrepPattern() + " not found in  " + theFile.getCanonicalPath();
+            String msg = grep.getGrepPattern() + " not found in  " + string;
             log.error(msg);
-            throw new MojoFailureException(msg);
+            throw new RuntimeException(msg);
         }
     }
 

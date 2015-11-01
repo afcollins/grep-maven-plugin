@@ -1,5 +1,6 @@
 package net.radai;
 
+import static org.junit.Assert.*;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,7 +75,8 @@ public class SingleGrepMojoTest extends AbstractGrepMojoTestCase {
                 List<Match> patternMatches = matches.get(grep);
                 assertEquals(1, patternMatches.size());
                 Match match = patternMatches.get(0);
-                assertEquals("App.java", match.getTheFile().getName());
+                String[] split = match.getFileName().split("/");
+                assertEquals("App.java", split[split.length - 1]);
             }
         }
     }

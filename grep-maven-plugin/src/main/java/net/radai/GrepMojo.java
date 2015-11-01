@@ -1,6 +1,5 @@
 package net.radai;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -50,7 +49,7 @@ public class GrepMojo extends AbstractGrepMojo {
             for (Grep grep2 : matches.keySet()) {
                 List<Match> list = matches.get(grep2);
                 for (Match match : list) {
-                    printMatch(match.getTheFile(), match.getTheLine(), grep2, match.getLineNumber());
+                    printMatch(match.getFileName(), match.getTheLine(), grep2, match.getLineNumber());
                 }
             }
         } catch (Exception e) {
@@ -58,19 +57,19 @@ public class GrepMojo extends AbstractGrepMojo {
         }
     }
 
-    private void printMatch(File theFile, String theLine, Grep grep, int lineNumber)
+    private void printMatch(String fileName, String theLine, Grep grep, int lineNumber)
             throws IOException, TemplateException {
         String templateToUse = grep.getOutputPattern();
         if (templateToUse == null) {
             templateToUse = outputPattern;
         }
         if (templateToUse == null) {
-            log.info(theFile.getCanonicalPath() + ": " + lineNumber + ": " + theLine);
+            log.info(fileName + ": " + lineNumber + ": " + theLine);
         } else {
             Template template = new Template("templateName", new StringReader(templateToUse), new Configuration());
             HashMap<String, String> parameters = new HashMap<>();
             parameters.put("line", theLine);
-            parameters.put("fileName", theFile.getName());
+            parameters.put("fileName", fileName);
             parameters.put("lineNumber", lineNumber + "");
             StringWriter output = new StringWriter();
             template.process(parameters, output);
